@@ -118,11 +118,13 @@ func TestFetchArticle(t *testing.T) {
 		err error
 	}{
 		{"https://udn.com/news/story/6811/5841452", ErrTimeOverDays},
-		{"https://udn.com/news/story/6812/4532169", nil},
-		{"https://udn.com/news/story/6897/5843460", nil},
-		{"https://udn.com/news/story/6656/5843558", nil},
-		{"https://udn.com/news/story/12177/5843524", nil},
-		{"https://udn.com/news/story/120974/5843356", nil},
+		// {"https://udn.com/news/story/6812/4532169", nil},
+		// {"https://udn.com/news/story/6897/5843460", nil},
+		// {"https://udn.com/news/story/6656/5843558", nil},
+		// {"https://udn.com/news/story/12177/5843524", nil},
+		// {"https://udn.com/news/story/120974/5843356", nil},
+		// {"https://udn.com/news/story/7314/5844797", nil},
+		{"https://udn.com/news/story/7320/5844909", nil},
 	}
 	for _, tc := range tests {
 		a := NewArticle()

@@ -300,7 +300,9 @@ func (a *Article) fetchContent() (string, error) {
 	redirect := ""
 	if len(rs) == 2 {
 		redirect = rs[1]
-		if strings.Contains(redirect, "vip.udn.com") {
+		if strings.Contains(redirect, "vip.udn.com") ||
+			strings.Contains(redirect, "money.udn.com") ||
+			strings.Contains(redirect, "money.udn.com") {
 			return "", ErrIgnoreVIP
 		}
 		// get doc and raw by dail
@@ -308,74 +310,135 @@ func (a *Article) fetchContent() (string, error) {
 		if err != nil {
 			return body, nil
 		}
-		bodyN := exhtml.ElementsByTagAndClass(a.doc, "article", "story_article")
-		if len(bodyN) == 0 {
-			fmt.Println(string(a.raw))
-			return body, errors.Errorf("no article content matched: %s", a.U.String())
-		} else {
-			for _, n := range bodyN {
-				exhtml.ElementsRmByTag(n, "div")
-				exhtml.ElementsRmByTag(n, "div")
-				exhtml.ElementsRmByTag(n, "h1")
-				exhtml.ElementsRmByTag(n, "figure")
-				exhtml.ElementsRmByTag(n, "blockquote")
-				plist := exhtml.ElementsByTag(n, "h2", "p")
-				for _, v := range plist {
-					if v.FirstChild != nil {
-						if v.Data == "h2" {
-							body += fmt.Sprintf("\n##%s  \n", v.FirstChild.Data)
-						} else if v.Data == "b" {
-							body += fmt.Sprintf("**%s**", v.FirstChild.Data)
-						} else {
-							body += v.FirstChild.Data + "  \n"
+		if strings.Contains(sraw, "選擇下列方案繼續閱讀：") ||
+			strings.Contains(sraw, "訂閱看完整精彩內容") {
+			return "", ErrIgnoreVIP
+		}
+		if strings.Contains(redirect, "opinion.udn.com") {
+			bodyN := exhtml.ElementsByTag(a.doc, "main")
+			if len(bodyN) == 0 {
+				return body, errors.Errorf("no article content matched: %s", a.U.String())
+			} else {
+				for _, n := range bodyN {
+					exhtml.ElementsRmByTag(n, "div")
+					exhtml.ElementsRmByTag(n, "h1")
+					plist := exhtml.ElementsByTag(n, "p")
+					var buf bytes.Buffer
+					w := io.Writer(&buf)
+					for _, v := range plist {
+						if err := html.Render(w, v); err != nil {
+							return "", errors.WithMessagef(err,
+								"node render to bytes fail: %s", a.U.String())
 						}
+						repl := strings.NewReplacer("<p>", "", "</p>", "", "「", "“", "」", "”")
+						x := repl.Replace(buf.String())
+						re := regexp.MustCompile(`(?m)<b.*?>(?P<x>.*?)</b>`)
+						x = re.ReplaceAllString(x, "**${x}**")
+						re = regexp.MustCompile(`(?m)<strong>(?P<x>.*?)</strong>`)
+						x = re.ReplaceAllString(x, "**${x}**")
+						re = regexp.MustCompile(`(?m)<a href="(?P<href>.*?)".*?>(?P<x>.*?)</a>`)
+						x = re.ReplaceAllString(x, "[${x}](https://opinion.udn.com${href})")
+						if strings.TrimSpace(x) != "" {
+							body += x + "  \n"
+						}
+						buf.Reset()
 					}
-				}
 
-			}
-			repl := strings.NewReplacer("「", "“", "」", "”")
-			body = repl.Replace(body)
-			return body, nil
-		}
-	}
-	if strings.Contains(sraw, "選擇下列方案繼續閱讀：") ||
-		strings.Contains(sraw, "訂閱看完整精彩內容") {
-		return "", ErrIgnoreVIP
-	}
-	// fetch local site
-	bodyN := exhtml.ElementsByTagAndClass(a.doc, "section", "article-content__editor ")
-	if len(bodyN) != 0 {
-		ps := []*html.Node{}
-		for _, n := range bodyN {
-			exhtml.ElementsRmByTag(n, "div")
-			n1 := exhtml.ElementsByTag(n, "p")
-			for _, n11 := range n1 {
-				ps = append(ps, n11)
-			}
-		}
-		var buf bytes.Buffer
-		w := io.Writer(&buf)
-		for _, p := range ps {
-			if err := html.Render(w, p); err != nil {
-				return "", errors.WithMessagef(err, "node render to bytes fail: %s", a.U.String())
-			}
-			// re := regexp.MustCompile(`(?m)<p>(?P<paragraph>.*?)</p>`)
-			// x := re.ReplaceAllString(buf.String(), "${paragraph}  \n")
-			x := strings.ReplaceAll(buf.String(), "<p>", "")
-			x = strings.ReplaceAll(x, "</p>", "")
-			if strings.Contains(x, "延伸閱讀：") {
+				}
 				return body, nil
 			}
-			re := regexp.MustCompile(`(?m)<b>(?P<x>.*?)</b>`)
-			x = re.ReplaceAllString(x, "**${x}**")
-			re = regexp.MustCompile(`(?m)<strong>(?P<x>.*?)</strong>`)
-			x = re.ReplaceAllString(x, "**${x}**")
-			re = regexp.MustCompile(`(?m)<a href="(?P<href>.*?)".*?>(?P<x>.*?)</a>`)
-			x = re.ReplaceAllString(x, "[${x}](https://udn.com${href})")
-			x = strings.ReplaceAll(x, "「", "“")
-			x = strings.ReplaceAll(x, "」", "”")
-			body += x + "  \n"
-			buf.Reset()
+		}
+		if strings.Contains(redirect, "vision.udn.com") {
+			bodyN := exhtml.ElementsByTagAndClass(a.doc, "article", "story_article")
+			if len(bodyN) == 0 {
+				return body, errors.Errorf("no article content matched: %s", a.U.String())
+			} else {
+				for _, n := range bodyN {
+					exhtml.ElementsRmByTag(n, "div")
+					exhtml.ElementsRmByTag(n, "h1")
+					exhtml.ElementsRmByTag(n, "figure")
+					exhtml.ElementsRmByTag(n, "blockquote")
+					plist := exhtml.ElementsByTag(n, "h2", "p")
+					for _, v := range plist {
+						if v.FirstChild != nil {
+							x := v.FirstChild.Data
+							if v.Data == "h2" {
+								body += fmt.Sprintf("\n##%s  \n", x)
+							} else if v.Data == "b" {
+								body += fmt.Sprintf("**%s**", x)
+							} else if strings.TrimSpace(x) != "" {
+								body += x + "  \n"
+							}
+						}
+					}
+
+				}
+				repl := strings.NewReplacer("「", "“", "」", "”")
+				body = repl.Replace(body)
+				return body, nil
+			}
+		}
+		if strings.Contains(redirect, "money.udn.com") {
+			bodyN := exhtml.ElementsByTagAndClass(a.doc, "section", "article-content__editor")
+			if len(bodyN) != 0 {
+				var buf bytes.Buffer
+				w := io.Writer(&buf)
+				for _, n := range bodyN {
+					exhtml.ElementsRmByTag(n, "div")
+					ps := exhtml.ElementsByTag(n, "p")
+					for _, p := range ps {
+						if err := html.Render(w, p); err != nil {
+							return "", errors.WithMessagef(err, "node render to bytes fail: %s", a.U.String())
+						}
+						repl := strings.NewReplacer("<p>", "", "</p>", "", "「", "“", "」", "”")
+						x := repl.Replace(buf.String())
+						if strings.Contains(x, "延伸閱讀：") {
+							return body, nil
+						}
+						re := regexp.MustCompile(`(?m)<b.*?>(?P<x>.*?)</b>`)
+						x = re.ReplaceAllString(x, "**${x}**")
+						re = regexp.MustCompile(`(?m)<strong>(?P<x>.*?)</strong>`)
+						x = re.ReplaceAllString(x, "**${x}**")
+						re = regexp.MustCompile(`(?m)<a href="(?P<href>.*?)".*?>(?P<x>.*?)</a>`)
+						x = re.ReplaceAllString(x, "[${x}](https://money.udn.com${href})")
+						if strings.TrimSpace(x) != "" {
+							body += x + "  \n"
+						}
+						buf.Reset()
+					}
+				}
+				return body, nil
+			}
+		}
+	}
+	// fetch main site
+	bodyN := exhtml.ElementsByTagAndClass(a.doc, "section", "article-content__editor ")
+	if len(bodyN) != 0 {
+		var buf bytes.Buffer
+		w := io.Writer(&buf)
+		for _, n := range bodyN {
+			exhtml.ElementsRmByTag(n, "div")
+			ps := exhtml.ElementsByTag(n, "p")
+			for _, p := range ps {
+				if err := html.Render(w, p); err != nil {
+					return "", errors.WithMessagef(err, "node render to bytes fail: %s", a.U.String())
+				}
+				repl := strings.NewReplacer("<p>", "", "</p>", "", "「", "“", "」", "”")
+				x := repl.Replace(buf.String())
+				if strings.Contains(x, "延伸閱讀：") {
+					return body, nil
+				}
+				re := regexp.MustCompile(`(?m)<b.*?>(?P<x>.*?)</b>`)
+				x = re.ReplaceAllString(x, "**${x}**")
+				re = regexp.MustCompile(`(?m)<strong>(?P<x>.*?)</strong>`)
+				x = re.ReplaceAllString(x, "**${x}**")
+				re = regexp.MustCompile(`(?m)<a href="(?P<href>.*?)".*?>(?P<x>.*?)</a>`)
+				x = re.ReplaceAllString(x, "[${x}](https://udn.com${href})")
+				if strings.TrimSpace(x) != "" {
+					body += x + "  \n"
+				}
+				buf.Reset()
+			}
 		}
 	}
 	return body, nil
