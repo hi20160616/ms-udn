@@ -56,7 +56,7 @@ func get() error {
 	}
 
 	// test gist
-	// Data.Gist = "https://gist.github.com/hi20160616/d932caa9c0c905c07ee4f773fea7c850/raw/configs.json"
+	Data.Gist = "https://gist.github.com/hi20160616/d932caa9c0c905c07ee4f773fea7c850/raw/configs.json"
 	resp, err := http.Get(Data.Gist)
 	if err != nil {
 		return err

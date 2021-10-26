@@ -66,7 +66,7 @@ func getLinks(rawurl string) ([]string, error) {
 		return nil, errors.WithMessagef(err, "[%s] cannot extract links from %s",
 			configs.Data.MS["udn"].Title, rawurl)
 	} else {
-		links = linksFilter(links, `https://tw.udn.com/\w+/\d+/.*`)
+		links = linksFilter(links, `https://udn\.com/news/story/\d+?/\d+`)
 		return gears.StrSliceDeDupl(links), nil
 	}
 }

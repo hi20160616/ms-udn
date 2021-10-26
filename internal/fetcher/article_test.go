@@ -14,8 +14,9 @@ func TestFetchTitle(t *testing.T) {
 		url   string
 		title string
 	}{
-		{"https://tw.udn.com/local/20211015/EJNCNTZMQVE5TE2PHRHB5MN3HY/", "K律師論點｜城中城大火若是人禍　究責關鍵先釐清這事"},
-		{"https://tw.udn.com/politics/20211012/GTRJUAUOXBAUXIIQZEAR72XHSI/", "網傳綠營大老舔共文　讚「兩岸只有親情和恩情」？當事人說話了"},
+		// {"https://udn.com/news/story/6811/5841452", "本想建設火車！一挖竟出土“超巨量瑪雅文明古物”"},
+		// {"https://udn.com/news/story/6812/4532169", "金正恩性愛列車揭秘“歡樂組”專挑高妹處女 最小未滿13歲"},
+		{"https://udn.com/news/story/12177/5843524", "願景／綠電浪潮 公民電廠兩大難題 | 綠能缺口怎麼補"},
 	}
 	for _, tc := range tests {
 		a := NewArticle()
@@ -50,8 +51,9 @@ func TestFetchUpdateTime(t *testing.T) {
 		url  string
 		want string
 	}{
-		{"https://tw.udn.com/local/20211015/EJNCNTZMQVE5TE2PHRHB5MN3HY/", "2021-10-15 16:13:47.476 +0800 UTC"},
-		{"https://tw.udn.com/politics/20211012/GTRJUAUOXBAUXIIQZEAR72XHSI/", "2021-10-12 20:36:20.657 +0800 UTC"},
+		// {"https://udn.com/news/story/6811/5841452", "2021-10-25 12:36:08 +0800 UTC"},
+		// {"https://udn.com/news/story/6812/4532169", "2020-05-01 09:20:37 +0800 UTC"},
+		{"https://udn.com/news/story/12177/5843524", "2021-10-26 11:05:00 +0800 UTC"},
 	}
 	var err error
 	for _, tc := range tests {
@@ -84,9 +86,10 @@ func TestFetchContent(t *testing.T) {
 		url  string
 		want string
 	}{
-		{"https://tw.udn.com/property/20211021/2ICEHGCCWRFNXOLYWGGHGEIJDA/", "K律師論點｜城中城大火若是人禍　究責關鍵先釐清這事"},
-		{"https://tw.udn.com/local/20211015/EJNCNTZMQVE5TE2PHRHB5MN3HY/", "K律師論點｜城中城大火若是人禍　究責關鍵先釐清這事"},
-		{"https://tw.udn.com/politics/20211012/GTRJUAUOXBAUXIIQZEAR72XHSI/", "網傳綠營大老舔共文　讚「兩岸只有親情和恩情」？當事人說話了"},
+		{"https://udn.com/news/story/6811/5841452", "本想建設火車！一挖竟出土「超巨量瑪雅文明古物」"},
+		{"https://udn.com/news/story/6812/4532169", "金正恩性愛列車揭秘「歡樂組」專挑高妹處女 最小未滿13歲"},
+		{"https://udn.com/news/story/12177/5843524", "金正恩性愛列車揭秘「歡樂組」專挑高妹處女 最小未滿13歲"},
+		{"https://udn.com/news/story/120974/5843356", "金正恩性愛列車揭秘「歡樂組」專挑高妹處女 最小未滿13歲"},
 	}
 	var err error
 
@@ -114,8 +117,12 @@ func TestFetchArticle(t *testing.T) {
 		url string
 		err error
 	}{
-		{"https://tw.udn.com/local/20211015/EJNCNTZMQVE5TE2PHRHB5MN3HY/", ErrTimeOverDays},
-		{"https://tw.udn.com/property/20211021/2ICEHGCCWRFNXOLYWGGHGEIJDA/", nil},
+		{"https://udn.com/news/story/6811/5841452", ErrTimeOverDays},
+		{"https://udn.com/news/story/6812/4532169", nil},
+		{"https://udn.com/news/story/6897/5843460", nil},
+		{"https://udn.com/news/story/6656/5843558", nil},
+		{"https://udn.com/news/story/12177/5843524", nil},
+		{"https://udn.com/news/story/120974/5843356", nil},
 	}
 	for _, tc := range tests {
 		a := NewArticle()

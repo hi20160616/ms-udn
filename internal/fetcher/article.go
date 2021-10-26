@@ -1,9 +1,10 @@
 package fetcher
 
 import (
+	"bytes"
 	"crypto/md5"
-	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/url"
 	"regexp"
@@ -33,6 +34,8 @@ type Article struct {
 }
 
 var ErrTimeOverDays error = errors.New("article update time out of range")
+var ErrIgnoreCate error = errors.New("article is ignored by category")
+var ErrIgnoreVIP error = errors.New("article is ignored by vip required")
 
 func NewArticle() *Article {
 	return &Article{
@@ -109,25 +112,12 @@ var timeout = func() time.Duration {
 	return t
 }()
 
-// fetchArticle fetch article by rawurl
-func (a *Article) fetchArticle(rawurl string) (*Article, error) {
-	translate := func(x string, err error) (string, error) {
-		if err != nil {
-			return "", err
-		}
-		tw2s, err := gocc.New("tw2s")
-		if err != nil {
-			return "", err
-		}
-		return tw2s.Convert(x)
-	}
-
+func (a *Article) dail(rawurl string) (*Article, error) {
 	var err error
 	a.U, err = url.Parse(rawurl)
 	if err != nil {
 		return nil, err
 	}
-	// Dail
 	a.raw, a.doc, err = exhtml.GetRawAndDoc(a.U, 1*time.Minute)
 	if err != nil {
 		if strings.Contains(err.Error(), "invalid header") {
@@ -142,6 +132,46 @@ func (a *Article) fetchArticle(rawurl string) (*Article, error) {
 			return nil, err
 		}
 	}
+	return a, nil
+}
+
+// fetchArticle fetch article by rawurl
+func (a *Article) fetchArticle(rawurl string) (*Article, error) {
+	translate := func(x string, err error) (string, error) {
+		if err != nil {
+			return "", err
+		}
+		tw2s, err := gocc.New("tw2s")
+		if err != nil {
+			return "", err
+		}
+		return tw2s.Convert(x)
+	}
+
+	// Dail
+	var err error
+	a, err = a.dail(rawurl)
+	if err != nil {
+		return nil, err
+	}
+	// a.U, err = url.Parse(rawurl)
+	// if err != nil {
+	//         return nil, err
+	// }
+	// a.raw, a.doc, err = exhtml.GetRawAndDoc(a.U, 1*time.Minute)
+	// if err != nil {
+	//         if strings.Contains(err.Error(), "invalid header") {
+	//                 a.Title = a.U.Path
+	//                 a.UpdateTime = timestamppb.Now()
+	//                 a.Content, err = a.fmtContent("")
+	//                 if err != nil {
+	//                         return nil, err
+	//                 }
+	//                 return a, nil
+	//         } else {
+	//                 return nil, err
+	//         }
+	// }
 
 	a.Id = fmt.Sprintf("%x", md5.Sum([]byte(rawurl)))
 
@@ -176,7 +206,56 @@ func (a *Article) fetchTitle() (string, error) {
 			configs.Data.MS["udn"].Title)
 	}
 	title := n[0].FirstChild.Data
-	rp := strings.NewReplacer(" ｜ 蘋果新聞網 ｜ 蘋果日報", "")
+	if strings.Contains(title, "股市") {
+		return "ignore", ErrIgnoreCate
+	}
+	if strings.Contains(title, "娛樂") {
+		return "ignore", ErrIgnoreCate
+	}
+	if strings.Contains(title, "旅遊") {
+		return "ignore", ErrIgnoreCate
+	}
+	if strings.Contains(title, "運動") {
+		return "ignore", ErrIgnoreCate
+	}
+	if strings.Contains(title, "文教") {
+		return "ignore", ErrIgnoreCate
+	}
+	if strings.Contains(title, "數位") {
+		return "ignore", ErrIgnoreCate
+	}
+	if strings.Contains(title, "經濟日報") {
+		return "ignore", ErrIgnoreCate
+	}
+	if strings.Contains(title, " | 聯合晚點評 | 聯合報") {
+		return "ignore", ErrIgnoreCate
+	}
+	rp := strings.NewReplacer(
+		" | 全球", "",
+		" | 世界萬象", "",
+		" | 產經", "",
+		" | 雜誌", "",
+		" | 生活", "",
+		" | 大台北", "",
+		" | 地方", "",
+		" | 社會", "",
+		" | 運動", "",
+		" | 娛樂", "",
+		" | 健康", "",
+		" | 股市", "",
+		" | 要聞", "",
+		" | 文教", "",
+		" | 社論", "",
+		" | 評論", "",
+		" | 兩岸", "",
+		" | 數位", "",
+		" | Oops", "",
+		" | 網搜追夯事", "",
+		" | 奇聞不要看", "",
+		" | 雜誌", "",
+		" | 旅遊", "",
+		" | 聯合新聞網", "",
+	)
 	title = strings.TrimSpace(rp.Replace(title))
 	return gears.ChangeIllegalChar(title), nil
 }
@@ -189,23 +268,15 @@ func (a *Article) fetchUpdateTime() (*timestamppb.Timestamp, error) {
 
 	t := time.Now() // if no time fetched, return current time
 	var err error
-	n := exhtml.MetasByProperty(a.doc, "article:published_time")
-	if len(n) == 0 {
-		return nil, fmt.Errorf("[%s] fetchUpdateTime error, no meta named date matched: %s",
-			configs.Data.MS["udn"].Title, a.U.String())
-	}
-	for _, nn := range n {
-		for _, x := range nn.Attr {
-			if x.Key == "content" {
-				t, err = time.Parse(time.RFC3339, x.Val)
-				if err != nil {
-					return nil, errors.WithMessage(err,
-						"caught meta but no content matched.")
-				}
-			}
+	re := regexp.MustCompile(`"datePublished":.*?"(.*?)",`)
+	rs := re.FindStringSubmatch(string(a.raw))
+	if len(rs) == 2 {
+		t, err = time.Parse(time.RFC3339, rs[1])
+		if err != nil {
+			return nil, errors.WithMessagef(err, "[%s] time pased error: %s",
+				configs.Data.MS["udn"].Title, a.U.String())
 		}
 	}
-
 	if t.Before(time.Now().AddDate(0, 0, -3)) {
 		return timestamppb.New(t), ErrTimeOverDays
 	}
@@ -222,44 +293,90 @@ func (a *Article) fetchContent() (string, error) {
 		return "", errors.Errorf("[%s] fetchContent: doc is nil: %s", configs.Data.MS["udn"].Title, a.U.String())
 	}
 	body := ""
-	bodyN := exhtml.ElementsByTagAndId(a.doc, "script", "fusion-metadata")
-	if len(bodyN) == 0 {
-		return body, errors.Errorf("no article content matched: %s", a.U.String())
+	// fetch redirect url
+	sraw := string(a.raw)
+	re := regexp.MustCompile(`(?m)<script language=javascript>window\.location\.href="(.*?)";</script>`)
+	rs := re.FindStringSubmatch(sraw)
+	redirect := ""
+	if len(rs) == 2 {
+		redirect = rs[1]
+		if strings.Contains(redirect, "vip.udn.com") {
+			return "", ErrIgnoreVIP
+		}
+		// get doc and raw by dail
+		a, err := a.dail(redirect)
+		if err != nil {
+			return body, nil
+		}
+		bodyN := exhtml.ElementsByTagAndClass(a.doc, "article", "story_article")
+		if len(bodyN) == 0 {
+			fmt.Println(string(a.raw))
+			return body, errors.Errorf("no article content matched: %s", a.U.String())
+		} else {
+			for _, n := range bodyN {
+				exhtml.ElementsRmByTag(n, "div")
+				exhtml.ElementsRmByTag(n, "div")
+				exhtml.ElementsRmByTag(n, "h1")
+				exhtml.ElementsRmByTag(n, "figure")
+				exhtml.ElementsRmByTag(n, "blockquote")
+				plist := exhtml.ElementsByTag(n, "h2", "p")
+				for _, v := range plist {
+					if v.FirstChild != nil {
+						if v.Data == "h2" {
+							body += fmt.Sprintf("\n##%s  \n", v.FirstChild.Data)
+						} else if v.Data == "b" {
+							body += fmt.Sprintf("**%s**", v.FirstChild.Data)
+						} else {
+							body += v.FirstChild.Data + "  \n"
+						}
+					}
+				}
+
+			}
+			repl := strings.NewReplacer("「", "“", "」", "”")
+			body = repl.Replace(body)
+			return body, nil
+		}
 	}
-	// Fetch content
-	bodyJs := func() string {
-		for _, v := range bodyN {
-			if v.FirstChild != nil && v.FirstChild.Type == html.TextNode {
-				return v.FirstChild.Data
+	if strings.Contains(sraw, "選擇下列方案繼續閱讀：") ||
+		strings.Contains(sraw, "訂閱看完整精彩內容") {
+		return "", ErrIgnoreVIP
+	}
+	// fetch local site
+	bodyN := exhtml.ElementsByTagAndClass(a.doc, "section", "article-content__editor ")
+	if len(bodyN) != 0 {
+		ps := []*html.Node{}
+		for _, n := range bodyN {
+			exhtml.ElementsRmByTag(n, "div")
+			n1 := exhtml.ElementsByTag(n, "p")
+			for _, n11 := range n1 {
+				ps = append(ps, n11)
 			}
 		}
-		return ""
-	}()
-
-	re := regexp.MustCompile(`(?m)Fusion\.globalContent=(?P<x>.*?);Fusion.globalContentConfig={"source":"`)
-	if !re.MatchString(bodyJs) {
-		return "", fmt.Errorf("nil content matched: %s", a.U.String())
-	}
-	rs := re.FindStringSubmatch(bodyJs)
-	c := struct {
-		Content_elements []struct {
-			Content string `json:"content"`
-		} `json:"content_elements"`
-	}{}
-	if err := json.Unmarshal([]byte(rs[1]), &c); err != nil {
-		return "", err
-	}
-
-	for _, v := range c.Content_elements {
-		re := regexp.MustCompile(`(?m)<mark .*?>(?P<x>.*?)</mark>`)
-		x := re.ReplaceAllString(v.Content, "${x}")
-		re = regexp.MustCompile(`(?m)<b>(?P<x>.*?)</b>`)
-		x = re.ReplaceAllString(x, "**${x}**")
-		re = regexp.MustCompile(`(?m)<a href="(?P<href>.*?)">(?P<x>.*?)</a>`)
-		x = re.ReplaceAllString(x, "[${x}](${href})")
-		x = strings.ReplaceAll(x, "「", "“")
-		x = strings.ReplaceAll(x, "」", "”")
-		body += x + "  \n"
+		var buf bytes.Buffer
+		w := io.Writer(&buf)
+		for _, p := range ps {
+			if err := html.Render(w, p); err != nil {
+				return "", errors.WithMessagef(err, "node render to bytes fail: %s", a.U.String())
+			}
+			// re := regexp.MustCompile(`(?m)<p>(?P<paragraph>.*?)</p>`)
+			// x := re.ReplaceAllString(buf.String(), "${paragraph}  \n")
+			x := strings.ReplaceAll(buf.String(), "<p>", "")
+			x = strings.ReplaceAll(x, "</p>", "")
+			if strings.Contains(x, "延伸閱讀：") {
+				return body, nil
+			}
+			re := regexp.MustCompile(`(?m)<b>(?P<x>.*?)</b>`)
+			x = re.ReplaceAllString(x, "**${x}**")
+			re = regexp.MustCompile(`(?m)<strong>(?P<x>.*?)</strong>`)
+			x = re.ReplaceAllString(x, "**${x}**")
+			re = regexp.MustCompile(`(?m)<a href="(?P<href>.*?)".*?>(?P<x>.*?)</a>`)
+			x = re.ReplaceAllString(x, "[${x}](https://udn.com${href})")
+			x = strings.ReplaceAll(x, "「", "“")
+			x = strings.ReplaceAll(x, "」", "”")
+			body += x + "  \n"
+			buf.Reset()
+		}
 	}
 	return body, nil
 }
