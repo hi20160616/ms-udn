@@ -2,6 +2,7 @@ package fetcher
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"fmt"
 	"io"
@@ -112,14 +113,18 @@ var timeout = func() time.Duration {
 	return t
 }()
 
-func (a *Article) dail(rawurl string) (*Article, error) {
+func (a *Article) dail(u string) (*Article, error) {
 	var err error
-	a.U, err = url.Parse(rawurl)
+	a.U, err = url.Parse(u)
 	if err != nil {
 		return nil, err
 	}
 	a.raw, a.doc, err = exhtml.GetRawAndDoc(a.U, 1*time.Minute)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, errors.WithMessagef(err,
+				"404 on url: %s", u)
+		}
 		if strings.Contains(err.Error(), "invalid header") {
 			a.Title = a.U.Path
 			a.UpdateTime = timestamppb.Now()
@@ -154,24 +159,6 @@ func (a *Article) fetchArticle(rawurl string) (*Article, error) {
 	if err != nil {
 		return nil, err
 	}
-	// a.U, err = url.Parse(rawurl)
-	// if err != nil {
-	//         return nil, err
-	// }
-	// a.raw, a.doc, err = exhtml.GetRawAndDoc(a.U, 1*time.Minute)
-	// if err != nil {
-	//         if strings.Contains(err.Error(), "invalid header") {
-	//                 a.Title = a.U.Path
-	//                 a.UpdateTime = timestamppb.Now()
-	//                 a.Content, err = a.fmtContent("")
-	//                 if err != nil {
-	//                         return nil, err
-	//                 }
-	//                 return a, nil
-	//         } else {
-	//                 return nil, err
-	//         }
-	// }
 
 	a.Id = fmt.Sprintf("%x", md5.Sum([]byte(rawurl)))
 
@@ -206,29 +193,14 @@ func (a *Article) fetchTitle() (string, error) {
 			configs.Data.MS["udn"].Title)
 	}
 	title := n[0].FirstChild.Data
-	if strings.Contains(title, "股市") {
-		return "ignore", ErrIgnoreCate
-	}
-	if strings.Contains(title, "娛樂") {
-		return "ignore", ErrIgnoreCate
-	}
-	if strings.Contains(title, "旅遊") {
-		return "ignore", ErrIgnoreCate
-	}
-	if strings.Contains(title, "運動") {
-		return "ignore", ErrIgnoreCate
-	}
-	if strings.Contains(title, "文教") {
-		return "ignore", ErrIgnoreCate
-	}
-	if strings.Contains(title, "數位") {
-		return "ignore", ErrIgnoreCate
-	}
-	if strings.Contains(title, "經濟日報") {
-		return "ignore", ErrIgnoreCate
-	}
-	if strings.Contains(title, " | 聯合晚點評 | 聯合報") {
-		return "ignore", ErrIgnoreCate
+	ignores := []string{"| 法律前線", "| 職場觀測", "| 流行消費", "股市",
+		"娛樂", "旅遊", "運動", "文教", "數位", " | 聯合晚點評 | 聯合報",
+		"| 情慾犯罪", "| 動物星球", "| 星座運勢", "| 紓困振興五倍券",
+		"| 稅務法務", "| 地方"}
+	for _, v := range ignores {
+		if strings.Contains(title, v) {
+			return "ignore", ErrIgnoreCate
+		}
 	}
 	rp := strings.NewReplacer(
 		" | 全球", "",
